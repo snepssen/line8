@@ -3,8 +3,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0f5f9e">
-<title>Line 8 &amp; Tallpack: fault finder and manual</title>
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151c24" media="(prefers-color-scheme: dark)">
+<title>Line 8 · Fault finder &amp; manual</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Line 8">
+<meta name="application-name" content="Line 8">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <style>
 
 html { padding-top: env(safe-area-inset-top, 0px); }
@@ -417,6 +425,17 @@ html, body { overflow-x: clip; }
 ol.flow > li, ol.flow > li > div, .card, .cards > * { min-width: 0; }
 .badge { white-space: normal; overflow-wrap: anywhere; }
 .view { overflow-wrap: break-word; }
+/* PWA: update banner, offline badge, standalone safe areas */
+.pwa-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabs-h) + 14px + env(safe-area-inset-bottom, 0px)); z-index: 95; max-width: calc(100vw - 24px); }
+.pwa-bar button { min-height: 48px; padding: 10px 20px; border: 0; border-radius: 24px; background: var(--accent); color: #fff; font: 700 1rem/1.2 var(--f-body); box-shadow: 0 8px 24px rgba(0,0,0,.28); cursor: pointer; }
+.off-ok { position: fixed; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(var(--tabs-h) + 14px + env(safe-area-inset-bottom, 0px)); z-index: 94; background: #1f7a3a; color: #fff; padding: 6px 12px; border-radius: 16px; font: 600 .85rem/1.2 var(--f-body); box-shadow: 0 4px 14px rgba(0,0,0,.2); transition: opacity .6s; pointer-events: none; }
+.off-ok.fade { opacity: 0; }
+@media (display-mode: standalone) {
+  html { padding-top: 0; }
+  :root { --top-h: calc(64px + env(safe-area-inset-top, 0px)); }
+  .top { top: 0; padding-top: calc(8px + env(safe-area-inset-top, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  body { overscroll-behavior-y: none; }
+}
 
 </style>
 <body>
@@ -687,6 +706,7 @@ ol.flow > li, ol.flow > li > div, .card, .cards > * { min-width: 0; }
   const EN2NL = {}; for (const [k, v] of Object.entries(HMI)) norm(v).split(' ').forEach(w => { if (w.length > 3) (EN2NL[w] = EN2NL[w] || new Set()).add(k); });
   function expand(w) { const s = new Set([w]); if (HMI[w]) norm(HMI[w]).split(' ').forEach(x => x.length > 2 && s.add(x)); if (EN2NL[w]) EN2NL[w].forEach(x => s.add(norm(x))); return [...s]; }
   function matchAll(words, hay) { return words.every(w => expand(w).some(x => hay.includes(x))); }
+  const ALIASES = (D.aliases || []).map(a => ({ a, t: a.terms.map(norm) }));
   function search(raw) {
     const q = norm(raw); if (!q) return null;
     const qc = compact(raw); const STOP = new Set(['de', 'het', 'een', 'the', 'a', 'of', 'to', 'en', 'and', 'is']);
@@ -707,7 +727,8 @@ ol.flow > li, ol.flow > li > div, .card, .cards > * { min-width: 0; }
     const secs = []; const seen = new Set();
     for (const it of index) { if (seen.has(it.anchor)) continue; if (matchAll(words, it.n)) { seen.add(it.anchor); secs.push(it); } if (secs.length > 20) break; }
     const gl = GIDX.filter(g => matchAll(words, g.h)).slice(0, 12);
-    return { q: raw, words, errs: errs.map(x => x[1]), nodes, secs, gl };
+    const go = q.length >= 3 ? ALIASES.filter(x => x.t.some(t => t.startsWith(q) || q.includes(t) || (q.length >= 5 && t.includes(q)))).map(x => x.a) : [];
+    return { q: raw, words, errs: errs.map(x => x[1]), nodes, secs, gl, go };
   }
   function mark(s, words) { let out = esc(s); words.flatMap(expand).filter(w => w.length > 1).sort((a, b) => b.length - a.length).forEach(w => { out = out.replace(new RegExp('(' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?![^<]*>)', 'ig'), '<mark>$1</mark>'); }); return out; }
   function renderResults(r) {
@@ -716,16 +737,17 @@ ol.flow > li, ol.flow > li > div, .card, .cards > * { min-width: 0; }
     el.hidden = false; $('#fixHome').hidden = true;
     const tn = { zone: 'Position', sensor: 'Sensor', part: 'Part' };
     el.innerHTML = `
+      ${r.go.length ? `<div class="res-group"><div class="cards">${r.go.map(a => `<button class="card big go" data-view="${a.view}"><div class="row1"><span class="badge L8">Line 8</span><span class="badge code">Overview</span></div><div class="ct">▶️ ${esc(a.title)}</div><div class="rs">${esc(a.desc)}</div></button>`).join('')}</div></div>` : ''}
       ${r.errs.length ? `<div class="res-group"><h2 class="sh">Errors &amp; messages <span class="muted">(${r.errs.length})</span></h2><div class="cards">${r.errs.slice(0, 30).map(e => card(e, e.frequent).replace(esc(e.screen[0]), mark(e.screen[0], r.words))).join('')}</div></div>` : ''}
       ${r.nodes.length ? `<div class="res-group"><h2 class="sh">Sensors, parts &amp; positions</h2><div class="chips">${r.nodes.map(n => `<button class="chip${errsOf[n.id] ? ' err' : ''}" data-node="${n.id}"><span class="ty">${tn[n.type] || n.type}</span>${esc(n.name)}${errsOf[n.id] ? ` · ${errsOf[n.id].length} err` : ''}</button>`).join('')}</div></div>` : ''}
       ${r.gl.length ? `<div class="res-group"><h2 class="sh">Dutch → English</h2><table class="gl">${r.gl.map(g => `<tr><td>${mark(g.nl, r.words)}</td><td>${mark(g.en, r.words)}</td></tr>`).join('')}</table></div>` : ''}
       ${r.secs.length ? `<div class="res-group"><h2 class="sh">Manual sections</h2><div class="res-list">${r.secs.map(s => `<button class="res-item" data-anchor="${s.anchor}"><span class="badge ${s.m === 'A' ? 'L8' : 'WR'}">${s.m === 'A' ? 'Line 8' : 'Wrapper'} p.${esc(String(s.page).replace(' (duplicate scan)', ''))}</span><span><b>${mark(s.title, r.words)}</b><br><span class="rs">${mark(strip(s.text).slice(0, 150), r.words)}</span></span></button>`).join('')}</div></div>` : ''}
-      ${!r.errs.length && !r.nodes.length && !r.secs.length && !r.gl.length ? `<p class="gap">Nothing found for “${esc(r.q)}”. Try part of the screen text (e.g. <b>BLIJFT UIT</b>, <b>light curtain</b>), a sensor (<b>FC_31</b>), an alarm number (<b>2</b>), or one word in Dutch or English (<b>klem</b>, <b>clamp</b>).</p>` : ''}`;
+      ${!r.go.length && !r.errs.length && !r.nodes.length && !r.secs.length && !r.gl.length ? `<p class="gap">Nothing found for “${esc(r.q)}”. Try part of the screen text (e.g. <b>BLIJFT UIT</b>, <b>light curtain</b>), a sensor (<b>FC_31</b>), an alarm number (<b>2</b>), or one word in Dutch or English (<b>klem</b>, <b>clamp</b>).</p>` : ''}`;
   }
   const q = $('#q');
   let qt = null;
   q.addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(() => { if (q.value.trim() && view !== 'fix') show('fix'); renderResults(search(q.value)); $('#clearQ').hidden = !q.value; }, 60); });
-  q.addEventListener('keydown', e => { if (e.key === 'Enter') { const r = search(q.value); if (r && r.errs[0]) openErr(r.errs[0].id); q.blur(); } if (e.key === 'Escape') { q.value = ''; renderResults(null); q.blur(); } });
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(qt); const r = search(q.value); if (r && r.go.length) { show(r.go[0].view); window.scrollTo(0, 0); } else if (r && r.errs[0]) openErr(r.errs[0].id); q.blur(); } if (e.key === 'Escape') { q.value = ''; renderResults(null); q.blur(); } });
   $('#clearQ').onclick = () => { q.value = ''; renderResults(null); $('#clearQ').hidden = true; q.focus(); };
   document.addEventListener('keydown', e => {
     const typing = e.target.closest('input, textarea');
@@ -876,7 +898,7 @@ ol.flow > li, ol.flow > li > div, .card, .cards > * { min-width: 0; }
       <p>${S.what}</p>
       <h2 class="sh">★ Frequent errors</h2><div class="cards">${D.errors.filter(e => e.frequent).map(e => card(e, true)).join('')}</div>
       <h2 class="sh">The job, step by step <span class="muted">(operator’s description, checked against the manual where possible)</span></h2>
-      <ol class="flow">${S.flow.map(f => `<li><span class="fn">${f.n}</span><div><div class="ft">${esc(f.t)}</div><div class="muted"><i>${esc(f.nl)}</i> · <span class="${W2[f.who] || 'badge'}">${f.who === 'op' ? '👷 You' : '⚙️ Machine'}</span> · <span class="badge ${f.src === 'manual' ? 'man' : 'inf'}">${f.src === 'manual' ? 'From the manual' : f.src === 'operator' ? 'Operator’s description: not in the PDFs' : 'Operator + manual'}</span></div>
+      <ol class="flow">${S.flow.map(f => `<li><span class="fn">${f.n}</span><div><div class="ft">${esc(f.t)}</div><div class="muted"><i>${esc(f.nl)}</i> · <span class="${W2[f.who] || 'badge'}">${f.who === 'op' ? '👷 You' : f.who === 'unk' ? '❓ You or machine: not documented' : '⚙️ Machine'}</span> · <span class="badge ${f.src === 'manual' ? 'man' : 'inf'}">${f.src === 'manual' ? 'From the manual' : f.src === 'operator' ? 'Operator’s description: not in the PDFs' : 'Operator + manual'}</span></div>
         <div class="fd">${f.d}</div>
         ${f.zones.length || f.nodes.length ? `<div class="chips">${[...f.zones, ...f.nodes.filter(n => !f.zones.includes(n))].map(nodeChip).join('')}${f.anchor ? `<button class="chip" data-anchor="${f.anchor}"><span class="ty">Manual</span>Read section</button>` : ''}</div>` : ''}
         ${f.errs.length ? `<div class="wrong">What can go wrong here</div><div class="chips">${errChips(f.errs)}</div>` : ''}</div></li>`).join('')}</ol>
@@ -952,6 +974,50 @@ ol.flow > li, ol.flow > li > div, .card, .cards > * { min-width: 0; }
   window.__app = { search, openErr, openNode, goMap, show };
 })();
 
+</script>
+<div class="pwa-bar" id="pwaBar" hidden><button id="pwaReload" type="button">Update available, tap to reload</button></div>
+<div class="off-ok" id="offOk" hidden role="status">Available offline ✓</div>
+<script>
+/* PWA: service worker registration, update banner, offline indicator. The "happened again" log lives in localStorage (mm.*), which the service worker never touches, so it survives updates. */
+(function () {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  var updating = false;
+  function showUpdate(w) {
+    var bar = document.getElementById('pwaBar'); bar.hidden = false;
+    document.getElementById('pwaReload').onclick = function () { updating = true; w.postMessage({ type: 'SKIP_WAITING' }); };
+  }
+  function showOffline() {
+    navigator.serviceWorker.ready.then(function (reg) {
+      if (!reg.active) return;
+      var ch = new MessageChannel();
+      ch.port1.onmessage = function (e) {
+        var s = e.data || {}; document.documentElement.dataset.offline = s.cached >= s.total ? 'ready' : 'partial';
+        document.documentElement.dataset.swVersion = s.version || '';
+        if (s.cached >= s.total) {
+          var el = document.getElementById('offOk'); el.title = 'All ' + s.total + ' files cached (' + s.version + ')'; el.hidden = false;
+          setTimeout(function () { el.classList.add('fade'); setTimeout(function () { el.hidden = true; el.classList.remove('fade'); }, 700); }, 6000);
+        }
+      };
+      reg.active.postMessage({ type: 'STATUS' }, [ch.port2]);
+    });
+  }
+  navigator.serviceWorker.addEventListener('controllerchange', function () { if (updating) location.reload(); });
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./sw.js', { scope: './' }).then(function (reg) {
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg.waiting);
+      reg.addEventListener('updatefound', function () {
+        var w = reg.installing; if (!w) return;
+        w.addEventListener('statechange', function () {
+          if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdate(w);
+          if (w.state === 'activated' && !updating) showOffline();
+        });
+      });
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) reg.update().catch(function () {}); });
+      if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function () {});
+      showOffline();
+    }).catch(function (e) { console.warn('Service worker not registered:', e); });
+  });
+})();
 </script>
 </body>
 </html>
